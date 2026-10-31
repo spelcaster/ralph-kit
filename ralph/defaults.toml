@@ -38,13 +38,16 @@ engine = "sbx"                      # sbx | none (none = no isolation, tests onl
 keep = false                        # true: don't tear sandboxes down when a task/conversation ends, so the
                                      # next `ralph talk`/`prd`/`gates` reuses a warm one instead of booting a
                                      # new one. Clean up leftovers with `ralph sandboxes --prune`.
-agent = "claude"                    # the sandbox's workload: a built-in kit name ("claude", "codex", "shell")
-                                     # OR a reference to your own v3 image/local path/git ref, e.g.
-                                     # "docker.io/my-org/ralph-sandbox:1.0.0" — build one by extending a
-                                     # docker/sandbox-templates image (FROM + install whatever CLIs/tools your
-                                     # [agents.*] phases use) so nothing is installed at task-run time; see
+agent = "claude"                    # built-in kit name only ("claude", "codex", "shell", ...) — picks which
+                                     # `sbx create` subcommand runs; not an image reference
+template = ""                       # optional custom image for `agent`'s sandbox (sbx create --template):
+                                     # a registry ref, or a local one loaded into the sandbox runtime's own
+                                     # image store first with `sbx template load <tar>` (from `docker save`)
+                                     # or `sbx template save <sandbox> <tag>`. Build the image itself by
+                                     # extending a docker/sandbox-templates base (FROM + install whatever
+                                     # CLIs/tools your [agents.*] phases use) so nothing is installed at
+                                     # task-run time; see
                                      # https://docs.docker.com/ai/sandboxes/customize/author/base-images/
-template = ""                       # optional: a saved/registry sandbox snapshot for `agent` (sbx create --template)
 kits = []                           # optional extra mixin kits (sbx create --kit), e.g. "docker.io/sbx/playwright:1.61.1"
 memory = "8g"
 cpus = 0                            # 0 = sbx default

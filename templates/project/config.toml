@@ -31,7 +31,7 @@ model = "sonnet"
 # model = "gpt-5"
 # The sandbox is built once per task from [sandbox] agent/template (default kit: "claude"), and every
 # phase's agent runs inside that same sandbox. If a phase's CLI (like codex above) isn't in that image,
-# don't install it at run time — point `sandbox.agent` at your own image that has it preinstalled, see below.
+# don't install it at run time — point `sandbox.template` at your own image that has it preinstalled, see below.
 
 [gates]
 # Leave empty to auto-detect. Set explicitly for monorepos or unusual setups.
@@ -42,10 +42,13 @@ model = "sonnet"
 [sandbox]
 # Docker Sandboxes: one microVM per task. Domains below are allowed per sandbox on top of your sbx policy.
 # allow_domains = [ ...defaults..., "npm.my-company.example" ]
-# agent = "docker.io/my-org/ralph-sandbox:1.0.0"  # your own image with every [agents.*] CLI preinstalled,
-                                                   # instead of the built-in "claude" kit; build one by
-                                                   # extending a docker/sandbox-templates image, see
-                                                   # https://docs.docker.com/ai/sandboxes/customize/author/base-images/
+# template = "docker.io/my-org/ralph-sandbox:1.0.0"  # your own image with every [agents.*] CLI preinstalled.
+                                                       # `agent` stays a built-in kit name ("claude" above);
+                                                       # a local image needs loading into the sandbox runtime's
+                                                       # own image store first, with `sbx template load <tar>`
+                                                       # (from `docker save`) or `sbx template save <sandbox> <tag>`.
+                                                       # Build the image by extending a docker/sandbox-templates
+                                                       # base, see https://docs.docker.com/ai/sandboxes/customize/author/base-images/
 # kits = ["docker.io/sbx/playwright:1.61.1"]     # extra tooling for the sandbox
 # memory = "8g"
 # keep = true               # skip teardown, so the next talk/prd/gates reuses a warm sandbox;

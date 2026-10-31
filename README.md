@@ -121,9 +121,12 @@ Settings are layered, and later layers win: kit defaults in `ralph/defaults.toml
   teardown and reuse a warm sandbox instead; clean up what it leaves behind with `ralph sandboxes --prune`.
   One sandbox is built per task and reused across all of that task's phases, so if `[agents.*]` uses more
   than one CLI (e.g. codex for `test`, Claude Code for everything else), either install the extra one on
-  first use (see Limits below) or set `agent` to your own image that ships everything preinstalled —
-  `agent` takes a built-in kit name (`"claude"`, `"codex"`, `"shell"`) or a v3 workload reference (image,
-  local path, or git ref). Build one by extending a `docker/sandbox-templates` image; see
+  first use (see Limits below) or set `template` to your own image that ships everything preinstalled.
+  `agent` stays a built-in kit name (`"claude"`, `"codex"`, `"shell"`, ...) — it picks which `sbx create`
+  subcommand runs, it isn't an image reference. `template` is the image: a registry ref (`sbx create
+  --template`), or a local one loaded into the sandbox runtime's own image store first with `sbx template
+  load <tar>` (from `docker save`) or `sbx template save <sandbox> <tag>`. Build the image itself by
+  extending a `docker/sandbox-templates` base; see
   https://docs.docker.com/ai/sandboxes/customize/author/base-images/.
 - **Gates:** `[gates]` takes explicit commands. Otherwise Ralph auto-detects, in this order: make/just
   targets, then Node/TS, Python, Go and Rust. If a required gate has nothing to run, it fails.
@@ -160,5 +163,5 @@ working directory that isn't mounted in the sandbox. Real microVMs, audio, and G
 - Only local sandboxes are supported for now. Cloud sandboxes need an API key, and they come later.
 - The sandbox starts from the agent's base image. Gate tools (ruff, mypy, pytest, tsc through npx) are
   installed on first use and stay for the life of the task's sandbox. Go and Rust toolchains, and any
-  non-default `[agents.*]` CLI (e.g. codex), have to come from a kit, `template`, or a custom `agent` image.
+  non-default `[agents.*]` CLI (e.g. codex), have to come from a kit or a custom `template` image.
 - Monorepos: auto-detection only looks at the repo root, so set `[gates]` commands explicitly.
