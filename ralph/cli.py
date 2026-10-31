@@ -250,15 +250,23 @@ def cmd_doctor(args) -> int:
     check("microphone recorder (sox / pw-record / arecord)", rec_ok, "sudo apt install sox libsox-fmt-pulse")
     if args.smoke and shutil.which("sbx") and _in_git():
         p = _project(args)
+        from .agents import build_command
         from .sandbox import Sandbox, sandbox_name
         sb = Sandbox(p.cfg["sandbox"], G.common_git_dir(p.repo))
         scratch = p.state_dir / "runs" / "doctor"
         box = sb.ensure(sandbox_name(p.repo.name, "doctor"), scratch)
+        default_agent = p.cfg.agent("development")
         try:
-            res = sb.run(box, ["claude", "-p", "--output-format", "json", "--max-turns", "1", "Reply with OK"],
-                         scratch, timeout=300)
-            check("agent answers inside a sandbox", '"is_error":false' in res.stdout.replace(" ", ""),
-                  (res.stdout + res.stderr)[-200:])
+            if default_agent.get("cli", "claude") == "claude":
+                res = sb.run(box, ["claude", "-p", "--output-format", "json", "--max-turns", "1", "Reply with OK"],
+                             scratch, timeout=300)
+                check("agent answers inside a sandbox", '"is_error":false' in res.stdout.replace(" ", ""),
+                      (res.stdout + res.stderr)[-200:])
+            else:  # cli = "command": no shared JSON contract, so just check the CLI runs inside the sandbox
+                cmd = build_command(default_agent)
+                res = sb.run(box, cmd, scratch, stdin="Reply with OK", timeout=300)
+                check(f"agent command answers inside a sandbox ({cmd[0]})", res.code == 0,
+                      (res.stdout + res.stderr)[-200:])
         finally:
             sb.remove(box)
     return 0 if ok else 1
