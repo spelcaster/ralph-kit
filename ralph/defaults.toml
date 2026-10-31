@@ -1,0 +1,122 @@
+# Ralph defaults. Layered, last wins:
+#   1. this file
+#   2. ~/.config/ralph/config.toml      (your global scope)
+#   3. <repo>/.ralph/config.toml        (project scope, commit it)
+#   4. CLI flags                        (this run only)
+
+[run]
+max_iterations = 25                 # agent invocations per `ralph run`
+max_iterations_per_task = 0         # 0 = no per-task cap
+max_consecutive_gate_failures = 5   # then ask the human
+max_consecutive_agent_errors = 3    # then ask the human
+phases = ["development", "test", "review"]   # order after planning
+wait_for_merge = true               # block between tasks until the PR is merged
+merge_poll_seconds = 60
+language = "en"                     # language for questions read aloud to you (e.g. "pt-BR")
+
+[budget]
+plan_usd = 200.0                    # what your plan is worth per window, in USD-equivalent
+ceiling_pct = 90                    # stop at this % of plan_usd
+window = "month"                    # month | week | day | 5h | run
+ledger = "~/.local/state/ralph/ledger.jsonl"   # global: the plan is shared by all projects
+
+[prd]
+paths = [".ralph/prd.md", "PRD.md", "docs/PRD.md"]
+
+[git]
+remote = "origin"
+base = ""                           # empty = remote default branch
+branch_prefix = "ralph/"
+worktree_root = "../{repo}.worktrees"
+pr_draft = false
+pr_labels = ["ralph"]
+
+[sandbox]
+# Docker Sandboxes (https://docs.docker.com/ai/sandboxes/): one microVM per task, private Docker daemon,
+# egress through the sbx policy proxy. Pick "Locked Down" at `sbx` setup so allow_domains is the whole list.
+engine = "sbx"                      # sbx | none (none = no isolation, tests only)
+keep = false                        # true: don't tear sandboxes down when a task/conversation ends, so the
+                                     # next `ralph talk`/`prd`/`gates` reuses a warm one instead of booting a
+                                     # new one. Clean up leftovers with `ralph sandboxes --prune`.
+agent = "claude"                    # sbx agent / kit the sandbox is created for
+template = ""                       # optional custom image (sbx create --template)
+kits = []                           # optional extra kits (sbx create --kit), e.g. "docker.io/sbx/playwright:1.61.1"
+memory = "8g"
+cpus = 0                            # 0 = sbx default
+allow_domains = [                   # applied per sandbox with `sbx policy allow network --sandbox`
+  "api.anthropic.com", "statsig.anthropic.com",
+  "registry.npmjs.org", "pypi.org", "files.pythonhosted.org",
+  "proxy.golang.org", "sum.golang.org", "index.crates.io", "static.crates.io",
+]
+agent_timeout_seconds = 2700
+
+[gates]
+# Leave empty to auto-detect (Makefile/justfile targets, then Node, Python, Go, Rust).
+setup = ""
+lint = ""
+typecheck = ""
+test = ""
+require = ["lint", "typecheck", "test"]   # a missing required gate counts as a failure
+timeout_seconds = 1200
+
+# Agents per task type. Every type inherits [agents.default].
+# cli = "claude" uses Claude Code headless; cli = "command" runs `command` with the prompt on stdin.
+[agents.default]
+cli = "claude"
+model = "sonnet"
+max_turns = 80
+max_budget_usd = 0                  # per-iteration cap; 0 = whatever is left under the budget ceiling
+extra_args = []
+command = []                        # for cli = "command"; "{model}" is substituted
+
+[agents.planning]
+model = "opus"
+
+[agents.development]
+
+[agents.test]
+
+[agents.review]
+model = "opus"
+
+[agents.fix]                        # fixing a PR that failed CI / got review comments / conflicts
+
+[agents.interview]                  # the voice PRD conversation: favour a fast model, it runs every turn
+model = "sonnet"
+max_turns = 12
+
+[prd_chat]
+max_turns = 40                      # conversation turns before Ralph insists on drafting
+done_words = ["that's all", "that is all", "write it", "write the prd", "we're done", "i'm done", "done",
+              "pode escrever", "é isso", "terminamos", "pronto"]
+approve_words = ["approve", "approved", "save it", "looks good", "ship it", "aprovado", "aprovo", "pode salvar", "salva"]
+repeat_words = ["repeat", "say again", "say that again", "repete", "repita"]
+undo_words = ["scratch that", "undo", "forget that", "esquece", "apaga isso"]
+pause_words = ["pause", "stop", "later", "pausa", "parar", "depois"]
+
+[hitl]
+notify = ["tmux", "osc", "bell", "attention"]   # + "desktop" for notify-send (libnotify) if not using Ghostty
+osc = "777"                         # "777" (title+body) or "9"
+speak = true                        # read questions aloud
+timeout_seconds = 0                 # 0 = wait forever
+renotify_seconds = 600
+
+[voice]
+# Linux. Text to speech: piper (natural, offline) > espeak-ng > spd-say.
+tts = "auto"                        # auto | piper | espeak | spd-say | command | off
+piper_model = "~/.local/share/ralph/voices/en_US-lessac-medium.onnx"   # pt-BR: pt_BR-faber-medium.onnx
+tts_command = ""                    # custom: reads text on stdin
+tts_voice = ""                      # espeak-ng voice, e.g. "pt-br"
+tts_rate = 0                        # espeak words per minute, 0 = default
+player = "auto"                     # auto | paplay | pw-play | aplay
+# Recording: sox `rec` stops on silence; pw-record / arecord stop on Enter.
+record = "auto"                     # auto | sox | pw-record | arecord | command
+record_command = ""                 # must write a 16kHz mono wav to {out}
+silence_seconds = 1.6
+# Speech to text: faster-whisper keeps the model loaded for the whole conversation.
+stt = "auto"                        # auto | faster-whisper | whisper-cpp | openai-api | command
+stt_model = "small"                 # faster-whisper size: tiny | base | small | medium | large-v3
+whisper_model = "~/.local/share/ralph/ggml-small.bin"    # for whisper-cpp
+stt_command = ""                    # must print the transcript; {wav} is substituted
+stt_language = "auto"               # e.g. "pt" or "en"; auto detects per utterance
+confirm = true                      # show the transcript of an answer and confirm before sending

@@ -1,0 +1,45 @@
+# Project-scoped Ralph config. Overrides ~/.config/ralph/config.toml, which overrides the kit defaults.
+# See every option with comments: ralph-kit/ralph/defaults.toml  ·  effective values: `ralph config`
+
+[run]
+max_iterations = 25
+language = "en"            # questions are read aloud in this language, e.g. "pt-BR"
+# phases = ["development", "test", "review"]
+
+[budget]
+plan_usd = 200.0           # USD-equivalent of your plan per window
+ceiling_pct = 90
+window = "month"
+
+# Pick an agent per task type. Everything inherits [agents.default].
+[agents.default]
+cli = "claude"
+model = "sonnet"
+
+[agents.planning]
+model = "opus"
+
+[agents.review]
+model = "opus"
+
+[agents.interview]          # the spoken PRD conversation: keep it fast
+model = "sonnet"
+
+# [agents.test]
+# cli = "command"                       # any CLI that reads the prompt on stdin
+# command = ["codex", "exec", "--model", "{model}", "-"]
+# model = "gpt-5"
+
+[gates]
+# Leave empty to auto-detect. Set explicitly for monorepos or unusual setups.
+# lint = "pnpm -r lint"
+# typecheck = "pnpm -r typecheck"
+# test = "pnpm -r test --run"
+
+[sandbox]
+# Docker Sandboxes: one microVM per task. Domains below are allowed per sandbox on top of your sbx policy.
+# allow_domains = [ ...defaults..., "npm.my-company.example" ]
+# kits = ["docker.io/sbx/playwright:1.61.1"]     # extra tooling for the sandbox
+# memory = "8g"
+# keep = true               # skip teardown, so the next talk/prd/gates reuses a warm sandbox;
+                             # clean up with `ralph sandboxes --prune`

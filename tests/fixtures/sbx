@@ -1,0 +1,79 @@
+#!/usr/bin/env python3
+"""Fake `sbx` (Docker Sandboxes CLI) for tests: same commands and flags, runs commands on the host.
+It enforces what matters for ralph: the sandbox must exist, the workdir must be a mounted workspace,
+and nothing may write into a read-only workspace's git metadata."""
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+db_path = Path(os.environ["FAKE_SBX_DB"])
+db = json.loads(db_path.read_text()) if db_path.exists() else {"boxes": {}, "log": [], "policy": {}}
+a = sys.argv[1:]
+db["log"].append(" ".join(a[:2]))
+
+
+def save():
+    db_path.write_text(json.dumps(db, indent=1))
+
+
+def die(msg, code=1):
+    save()
+    print(msg, file=sys.stderr)
+    sys.exit(code)
+
+
+if a[0] == "ls":
+    print(json.dumps([{"name": k, "status": "running"} for k in db["boxes"]]))
+elif a[0] == "create":
+    i, name, flags = 1, None, {}
+    while a[i].startswith("-"):
+        if a[i] in ("-q", "--quiet"):
+            i += 1
+            continue
+        flags[a[i]] = a[i + 1]
+        i += 2
+    name, agent, paths = flags["--name"], a[i], a[i + 1:]
+    if name in db["boxes"]:
+        die(f"sandbox {name} already exists")
+    mounts = []
+    for p in paths:
+        path, _, mode = p.partition(":")
+        if not Path(path).is_dir():
+            die(f"workspace {path} does not exist")
+        mounts.append({"path": path, "ro": mode == "ro"})
+    db["boxes"][name] = {"agent": agent, "mounts": mounts, "flags": flags}
+    db.setdefault("history", {})[name] = mounts
+elif a[0] == "rm":
+    for n in [x for x in a[1:] if not x.startswith("-")]:
+        db["boxes"].pop(n, None)
+elif a[0] == "policy":
+    db["policy"].setdefault(a[a.index("--sandbox") + 1], []).append(a[-1])
+elif a[0] == "secret" and a[1] == "ls":
+    print("anthropic  global")
+elif a[0] == "exec":
+    i, env, wd = 1, {}, None
+    while a[i].startswith("-"):
+        if a[i] == "-i":
+            i += 1
+        elif a[i] == "-w":
+            wd, i = a[i + 1], i + 2
+        elif a[i] == "-e":
+            k, _, v = a[i + 1].partition("=")
+            env[k] = v
+            i += 2
+        else:
+            die(f"unsupported exec flag {a[i]}", 125)
+    name, cmd = a[i], a[i + 1:]
+    box = db["boxes"].get(name)
+    if not box:
+        die(f"no such sandbox {name}", 125)
+    if wd and not any((wd + "/").startswith(m["path"].rstrip("/") + "/") for m in box["mounts"]):
+        die(f"workdir {wd} is not a mounted workspace of {name}", 125)
+    save()
+    p = subprocess.run(cmd, cwd=wd, env={**os.environ, **env})
+    sys.exit(p.returncode)
+else:
+    die(f"fake sbx: unsupported {a}")
+save()

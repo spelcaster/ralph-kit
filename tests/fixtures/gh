@@ -1,0 +1,44 @@
+#!/usr/bin/env python3
+"""Fake `gh`: PR state machine backed by a JSON file; 'merging' really merges into the bare remote."""
+import json, os, re, subprocess, sys, tempfile
+from pathlib import Path
+db_path = Path(os.environ["FAKE_GH_DB"]); remote = os.environ["FAKE_GH_REMOTE"]
+db = json.loads(db_path.read_text()) if db_path.exists() else {"prs": {}, "next": 1, "log": []}
+a = sys.argv[1:]; db["log"].append(" ".join(a[:3]))
+def save(): db_path.write_text(json.dumps(db, indent=1))
+def merge(pr):
+    d = tempfile.mkdtemp()
+    subprocess.run(f"git clone -q {remote} {d} && cd {d} && git merge -q --no-ff origin/{pr['head']} -m 'Merge PR' "
+                   f"&& git push -q origin HEAD:main", shell=True, check=True, capture_output=True)
+    pr["state"] = "MERGED"; pr["mergedAt"] = "now"
+if a[:2] == ["pr", "list"]:
+    head = a[a.index("--head") + 1]
+    print(json.dumps([{"number": int(k)} for k, p in db["prs"].items() if p["head"] == head and p["state"] == "OPEN"]))
+elif a[:2] == ["pr", "create"]:
+    n = db["next"]; db["next"] += 1
+    db["prs"][str(n)] = {"head": a[a.index("--head") + 1], "title": a[a.index("--title") + 1], "state": "OPEN", "views": 0}
+    print(f"https://github.com/acme/demo/pull/{n}")
+elif a[:2] == ["pr", "view"]:
+    pr = db["prs"][a[2]]; pr["views"] += 1
+    base = {"state": pr["state"], "mergedAt": pr.get("mergedAt"), "mergeable": "MERGEABLE", "mergeStateStatus": "CLEAN",
+            "reviewDecision": "", "statusCheckRollup": [], "headRefOid": "sha%d" % pr["views"], "url": "", "reviews": [], "comments": []}
+    if pr["title"] == "Add greeting module" and pr["state"] == "OPEN":
+        if pr["views"] == 1:   # first look: CI red + a review comment
+            base["statusCheckRollup"] = [{"name": "ci", "conclusion": "FAILURE", "detailsUrl": "https://github.com/acme/demo/actions/runs/42/job/1"}]
+            base["comments"] = [{"id": "c1", "author": {"login": "hugo"}, "body": "please rename x"}]
+            base["headRefOid"] = "sha-bad"
+        elif pr["views"] == 2:  # after the fix push: checks running
+            base["statusCheckRollup"] = [{"name": "ci", "status": "IN_PROGRESS"}]
+            base["comments"] = [{"id": "c1", "author": {"login": "hugo"}, "body": "please rename x"}]
+        else:
+            merge(pr); base["state"] = "MERGED"
+    elif pr["state"] == "OPEN" and pr["views"] >= 2:
+        merge(pr); base["state"] = "MERGED"
+    print(json.dumps(base))
+elif a[:2] == ["run", "view"]:
+    print("FAIL test_greeting: AssertionError expected 'hi'")
+elif a[0] == "api":
+    print("[]")
+elif a[:2] == ["pr", "comment"]:
+    db["log"].append("COMMENT " + a[a.index("--body") + 1][:80])
+save()

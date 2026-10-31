@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# Thin launcher: resolves the kit directory even through symlinks and prefers ralph's own venv
+# (which carries faster-whisper and piper for voice).
+set -euo pipefail
+SOURCE="${BASH_SOURCE[0]}"
+while [ -L "$SOURCE" ]; do
+  DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"; SOURCE="$(readlink "$SOURCE")"
+  [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE"
+done
+KIT="$(cd -P "$(dirname "$SOURCE")/.." && pwd)"
+VENV_PY="$HOME/.local/share/ralph/venv/bin/python"
+PY="${RALPH_PYTHON:-$([ -x "$VENV_PY" ] && echo "$VENV_PY" || echo python3)}"
+"$PY" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)' \
+  || { echo "ralph needs Python 3.11+ (set RALPH_PYTHON)" >&2; exit 1; }
+# faster-whisper (ctranslate2) dlopen's libcublas/libcudnn at runtime; if install.sh --voice pip-installed
+# them into the venv (system CUDA major version mismatch), point the loader there instead of the system libs.
+for d in "$HOME"/.local/share/ralph/venv/lib/python*/site-packages/nvidia/*/lib; do
+  [ -d "$d" ] && LD_LIBRARY_PATH="${LD_LIBRARY_PATH:+$LD_LIBRARY_PATH:}$d"
+done
+export LD_LIBRARY_PATH
+PYTHONPATH="$KIT${PYTHONPATH:+:$PYTHONPATH}" exec "$PY" -m ralph "$@"
