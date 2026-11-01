@@ -128,6 +128,29 @@ Settings are layered, and later layers win: kit defaults in `ralph/defaults.toml
   load <tar>` (from `docker save`) or `sbx template save <sandbox> <tag>`. Build the image itself by
   extending a `docker/sandbox-templates` base; see
   https://docs.docker.com/ai/sandboxes/customize/author/base-images/.
+
+  **Using a local custom image as `template`:** `docker images`/`docker build` and `sbx template` keep
+  separate stores — building the image with plain `docker build` is not enough, and pointing `template`
+  at it before loading it fails with a registry pull error (`pull access denied, repository does not
+  exist...`) because `sbx create --template` only looks in its own store, never Docker's.
+  1. Write a Dockerfile extending a `docker/sandbox-templates` base, e.g. `.ralph/sandbox/Dockerfile`:
+     ```dockerfile
+     FROM docker/sandbox-templates:shell
+     USER agent
+     RUN npm install -g @anthropic-ai/claude-code @openai/codex pnpm
+     ENTRYPOINT ["claude"]
+     CMD []
+     ```
+  2. Build it with plain Docker: `docker build -t my-sandbox:latest .ralph/sandbox`.
+  3. Get it into the sandbox runtime's own image store — `docker build` alone doesn't do this:
+     ```bash
+     docker save -o /tmp/my-sandbox.tar my-sandbox:latest
+     sbx template load /tmp/my-sandbox.tar
+     ```
+  4. Confirm it landed: `sbx template ls` should list `my-sandbox:latest`.
+  5. Point `.ralph/config.toml` at it: `[sandbox]` `template = "my-sandbox:latest"`.
+  6. Rebuilt the image after editing the Dockerfile? Repeat steps 2–3 with the same tag (`sbx template
+     load` overwrites by tag) — `ralph` never rebuilds it for you.
 - **Gates:** `[gates]` takes explicit commands. Otherwise Ralph auto-detects, in this order: make/just
   targets, then Node/TS, Python, Go and Rust. If a required gate has nothing to run, it fails.
 - **Stop conditions:**
