@@ -64,6 +64,18 @@ class Pure(unittest.TestCase):
             self.assertEqual(cfg.agent("test")["model"], "sonnet")    # default
             self.assertEqual(cfg.agent("test")["cli"], "claude")
 
+    def test_base_branch_ignores_stale_cached_remote_head(self):
+        # refs/remotes/origin/HEAD is a local cache set at clone time; git never refreshes it on
+        # fetch. Simulate a repo cloned when the remote's default branch was "master", after the
+        # remote's default moved to "main" — base_branch must report the live default, not the cache.
+        with tempfile.TemporaryDirectory() as d:
+            w = Path(d)
+            sh(f"git init -q --bare -b master {w}/remote.git", w)
+            sh(f"git clone -q {w}/remote.git proj", w)
+            sh("echo hi > f && git add . && git commit -qm init && git push -q origin master", w / "proj", ENV)
+            sh("git -C remote.git symbolic-ref HEAD refs/heads/main", w, ENV)  # remote's default moves on
+            self.assertEqual(G.base_branch(w / "proj", {}), "main")
+
     def test_deep_merge_does_not_mutate(self):
         a = {"x": {"y": 1}}
         deep_merge(a, {"x": {"z": 2}})

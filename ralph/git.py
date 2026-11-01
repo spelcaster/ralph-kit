@@ -49,13 +49,16 @@ def base_branch(repo: Path, cfg: dict) -> str:
     if cfg.get("base"):
         return cfg["base"]
     remote = cfg.get("remote", "origin")
-    ref = git(repo, "symbolic-ref", "--quiet", f"refs/remotes/{remote}/HEAD", check=False)
-    if ref:
-        return ref.rsplit("/", 1)[-1]
+    # Ask the remote live first: refs/remotes/{remote}/HEAD is a local cache set at clone time
+    # (or by `git remote set-head`) and git never refreshes it on fetch, so it goes stale the
+    # moment the remote's default branch changes — trusting it first silently targets the wrong branch.
     out = git(repo, "ls-remote", "--symref", remote, "HEAD", check=False)
     m = re.search(r"ref:\s*refs/heads/(\S+)\s+HEAD", out)
     if m:
         return m.group(1)
+    ref = git(repo, "symbolic-ref", "--quiet", f"refs/remotes/{remote}/HEAD", check=False)
+    if ref:
+        return ref.rsplit("/", 1)[-1]
     out = git(repo, "remote", "show", remote, check=False)
     m = re.search(r"HEAD branch: (\S+)", out)
     if m and m.group(1) != "(unknown)":
