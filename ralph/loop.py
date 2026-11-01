@@ -147,8 +147,12 @@ class Runner:
         cap = float(agent_cfg.get("max_budget_usd") or 0)
         agent_cfg["max_budget_usd"] = min(cap, remaining) if cap else remaining
         log = self.p.logs / f"{time.strftime('%Y%m%d-%H%M%S')}-{slug}-{phase}-{st['iterations']}.log"
+        self.p.log(f"  [{slug}] {phase} #{st['iterations']} → running agent "
+                   f"(cli={agent_cfg.get('cli', 'claude')}, model={agent_cfg.get('model', '')})…")
         out = agents.invoke(self.sandbox, box, agent_cfg, prompt, workdir, run_dir,
-                            timeout=int(self.cfg["sandbox"].get("agent_timeout_seconds", 2700)), log_file=log)
+                            timeout=int(self.cfg["sandbox"].get("agent_timeout_seconds", 2700)), log_file=log,
+                            heartbeat=lambda s: self.p.log(f"  [{slug}] {phase} #{st['iterations']} … "
+                                                           f"still running ({int(s)}s elapsed)"))
         self.ledger.add(out.cost, project=self.p.repo.name, task=slug, phase=phase, model=agent_cfg.get("model"))
         if count:
             self.p.log(f"  [{slug}] {phase} #{st['iterations']} → {out.status}  ${out.cost:.2f}  "
@@ -236,7 +240,10 @@ class Runner:
             else:
                 agent_errors = 0
 
-            gates = self.sandbox.gates(box, wt, self.cfg["gates"])
+            self.p.log(f"  [{task.slug}] running gates…")
+            gates = self.sandbox.gates(box, wt, self.cfg["gates"],
+                                       heartbeat=lambda s: self.p.log(f"  [{task.slug}] gates … "
+                                                                      f"still running ({int(s)}s elapsed)"))
             ok = gates.code == 0
             (self.p.logs / f"{time.strftime('%Y%m%d-%H%M%S')}-{task.slug}-gates.log").write_text(
                 gates.stdout + "\n" + gates.stderr)

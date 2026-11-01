@@ -5,6 +5,7 @@ import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Callable
 
 from .config import PKG_DIR
 from .sandbox import Result, Sandbox
@@ -97,12 +98,12 @@ def read_status(run_dir: Path) -> tuple[str, str, str]:
 
 
 def invoke(sandbox: Sandbox, box: str, agent: dict, prompt: str, workdir: Path, run_dir: Path, *,
-           timeout: int, log_file: Path) -> AgentOutcome:
+           timeout: int, log_file: Path, heartbeat: Callable[[float], None] | None = None) -> AgentOutcome:
     """Run one agent iteration inside sandbox `box`, with `workdir` as cwd. Status comes back via run_dir."""
     run_dir.mkdir(parents=True, exist_ok=True)
     (run_dir / "status.md").unlink(missing_ok=True)
     cmd = build_command(agent)
-    res = sandbox.run(box, cmd, workdir, stdin=prompt, timeout=timeout)
+    res = sandbox.run(box, cmd, workdir, stdin=prompt, timeout=timeout, heartbeat=heartbeat)
     log_file.write_text(f"$ {' '.join(cmd)}\n--- exit {res.code} in {res.seconds:.0f}s\n"
                         f"--- stdout\n{res.stdout}\n--- stderr\n{res.stderr}\n")
     cost = parse_cost(res.stdout, agent)

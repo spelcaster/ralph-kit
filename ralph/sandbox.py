@@ -21,9 +21,11 @@ import re
 import shutil
 import subprocess
 import sys
+import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Callable
 
 from .config import PKG_DIR
 
@@ -123,7 +125,8 @@ class Sandbox:
 
     # ------------------------------------------------------------------ execution
     def run(self, name: str, cmd: list[str], workdir: Path, *, stdin: str = "", env: dict | None = None,
-            timeout: int = 1800) -> Result:
+            timeout: int = 1800, heartbeat: Callable[[float], None] | None = None,
+            heartbeat_interval: int = 60) -> Result:
         env = {"GIT_OPTIONAL_LOCKS": "0", "CI": "1",
                # the worktree is owned by the host user; let git read it from inside the VM
                "GIT_CONFIG_COUNT": "1", "GIT_CONFIG_KEY_0": "safe.directory", "GIT_CONFIG_VALUE_0": "*",
@@ -137,6 +140,17 @@ class Sandbox:
             run_env, cwd = None, None
         else:
             full, run_env, cwd = cmd, {**os.environ, **env}, workdir
+        # long calls (agent iterations, gates) otherwise block silently for up to `timeout` seconds
+        # with no sign of life; tick a heartbeat so a stuck/slow call is visible, not indistinguishable
+        # from a hang.
+        stop = threading.Event()
+        ticker = None
+        if heartbeat:
+            def _tick():
+                while not stop.wait(heartbeat_interval):
+                    heartbeat(time.time() - start)
+            ticker = threading.Thread(target=_tick, daemon=True)
+            ticker.start()
         try:
             p = subprocess.run(full, input=stdin, capture_output=True, text=True, timeout=timeout,
                                cwd=cwd, env=run_env)
@@ -146,9 +160,14 @@ class Sandbox:
                 subprocess.run([self.sbx, "exec", name, "pkill", "-f", cmd[0]], capture_output=True, timeout=60)
             out = e.stdout.decode() if isinstance(e.stdout, bytes) else (e.stdout or "")
             return Result(124, out, "timeout", timed_out=True, seconds=time.time() - start)
+        finally:
+            stop.set()
+            if ticker:
+                ticker.join(timeout=1)
 
-    def gates(self, name: str, worktree: Path, gates_cfg: dict) -> Result:
+    def gates(self, name: str, worktree: Path, gates_cfg: dict, *,
+              heartbeat: Callable[[float], None] | None = None) -> Result:
         env = {f"RALPH_GATE_{k.upper()}": gates_cfg.get(k, "") for k in ("setup", "lint", "typecheck", "test")}
         env["RALPH_GATES_REQUIRE"] = " ".join(gates_cfg.get("require", []))
-        return self.run(name, ["bash", str(GATES_SH)], worktree, env=env,
+        return self.run(name, ["bash", str(GATES_SH)], worktree, env=env, heartbeat=heartbeat,
                         timeout=int(gates_cfg.get("timeout_seconds", 1200)))
