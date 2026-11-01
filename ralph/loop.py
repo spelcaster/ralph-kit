@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import time
+import traceback
 from pathlib import Path
 
 from . import agents, git as G, hitl, voice
@@ -92,6 +93,13 @@ class Runner:
         except KeyboardInterrupt:
             self.p.log("■ interrupted; state saved, `ralph run` resumes where it left off")
             return 130
+        except Exception as e:  # last resort: never let a bare traceback kill the run silently
+            self.p.log(f"■ stop: unexpected error ({e}); state saved, `ralph run` resumes where it left off\n"
+                       + traceback.format_exc())
+            hitl.notify(f"ralph · {self.p.repo.name} crashed", str(e), self.cfg["hitl"], self.p.repo)
+            if self.cfg["hitl"].get("speak", True):
+                voice.speak(f"Ralph crashed on {self.p.repo.name}. {e}", self.cfg["voice"], block=False)
+            return 1
 
     # ------------------------------------------------------------------ limits
     def check_limits(self, st: dict | None = None, iterations: bool = True) -> None:
